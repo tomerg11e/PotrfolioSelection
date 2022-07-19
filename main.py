@@ -4,6 +4,12 @@ from portfolio import PAMRPortfolio, MarketPortfolio, DeepPortfolio
 from os.path import exists
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import torch
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+MODEL_CHECKPOINT_PATH = "lstm_models"
+project_name = "mlps"
+entity = "mlps"
 
 START_DATE = '2022-04-01'
 END_TRAIN_DATE = '2022-05-31'
@@ -18,26 +24,25 @@ def get_data(re_download=False):
         wiki_table = pd.read_html('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')
         sp_tickers = wiki_table[0]
         tickers = [ticker.replace('.', '-') for ticker in sp_tickers['Symbol'].to_list()]
-        print("re-downloading data...")
+        print("re-downloading data...\n")
         data = yf.download(tickers, START_DATE, END_TEST_DATE)
     else:
         if exists(DATA_PATH):
-            print("using the existing data")
+            print("using the existing data\n")
             data = pd.read_pickle(DATA_PATH)
         else:
             wiki_table = pd.read_html('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')
             sp_tickers = wiki_table[0]
             tickers = [ticker.replace('.', '-') for ticker in sp_tickers['Symbol'].to_list()]
-            print("downloading data...")
+            print("downloading data...\n")
             data = yf.download(tickers, START_DATE, END_TEST_DATE)
             data.to_pickle(DATA_PATH)
     return data
 
 
 def test_portfolio(full_train, strategy):
-    print(f"running with {strategy}\n")
     returns = []
-    for test_date in tqdm(pd.date_range(END_TRAIN_DATE, END_TEST_DATE)):
+    for test_date in tqdm(pd.date_range(END_TRAIN_DATE, END_TEST_DATE), desc="testing..."):
         if test_date not in full_train.index:
             continue
         train = full_train[full_train.index < test_date]
@@ -52,12 +57,17 @@ def test_portfolio(full_train, strategy):
     returns = pd.DataFrame(returns).set_index('date')
     mean_return, std_returns = float(returns.mean()), float(returns.std())
     sharpe = mean_return / std_returns
-    print(sharpe)
+    print(f"the strategy {strategy}, gave sharpe value of {sharpe}")
 
 
 def main():
     full_train = get_data()
-    test_portfolio(full_train, DeepPortfolio())
+    model = DeepPortfolio()
+
+    for i in range(100):
+        model.train_portfolio(full_train)
+        test_portfolio(full_train, model)
+
     test_portfolio(full_train, MarketPortfolio())
     test_portfolio(full_train, PAMRPortfolio(pamr_type="0"))
     test_portfolio(full_train, PAMRPortfolio(pamr_type="1"))
